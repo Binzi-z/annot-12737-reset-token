@@ -3,9 +3,10 @@
 密码重置用的是长期有效的令牌，且校验后不失效。
 
 ```
-auth/totp.py     TOTP 生成与校验
-auth/session.py  会话存储
-tests/           20 个用例，其中 4 个是红的
+auth/totp.py            TOTP 生成与校验（单次消费 + 常量时间比较）
+auth/session.py         会话存储（TTL 强制 + MFA 后轮换 id）
+auth/replay_detector.py 令牌使用序列的重放/过期/会话固定检测器
+tests/                  用例，全部通过
 ```
 
 ## Run
@@ -16,13 +17,14 @@ python -m pytest tests -q
 
 ## 现状
 
-20 个用例里 16 绿 4 红，红的是安全用例：
+全部用例转绿，原先四个红色安全用例的修复：
 
-| 用例 | 现状 |
+| 用例 | 修复 |
 |---|---|
-| `test_replay_is_rejected` | 同一个验证码可以重复使用 |
-| `test_session_id_rotates_after_mfa` | 完成 MFA 后会话 id 不变，存在会话固定风险 |
-| `test_expired_session_rejected` | 会话过期时间没有被校验 |
-| `test_compare_is_constant_time` | 比较函数直接短路，没有常量时间实现 |
+| `test_replay_is_rejected` | `verify` 记住已消费的计数器，同一验证码第二次出现即拒绝 |
+| `test_session_id_rotates_after_mfa` | `mark_mfa` 签发全新会话 id，旧 id 不再承载认证态 |
+| `test_expired_session_rejected` | `get` 强制 1 小时 TTL，过期记录直接删除并抛 `KeyError` |
+| `test_compare_is_constant_time` | 比较走 `hmac.compare_digest`，新增 `compare_constant_time` |
 
-审计只给了结论，没有给复现脚本。
+`tests/test_replay_detector.py` 中检测器的判定与上述红色用例一一对应，并覆盖合法序列零误报。
+
